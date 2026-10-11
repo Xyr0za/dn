@@ -12,13 +12,16 @@ import dicom2nifti.settings as settings
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from pathlib import Path
 
-
+# MACHINE LEARNING
+import torch
+from totalsegmentator.python_api import totalsegmentator
 
 # Define archive
 BASE_DATA_DIR = Path("data")
+
 UPLOAD_DIR = BASE_DATA_DIR / "uploads"
 NIFTI_DIR = BASE_DATA_DIR / "nifti"
-
+MASKS_DIR = BASE_DATA_DIR / "masks"
 
 
 # Ensure Existence of directories
@@ -27,17 +30,22 @@ async def lifespan(app: FastAPI):
     print("Lifespan running")
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     NIFTI_DIR.mkdir(parents=True, exist_ok=True)
+    MASKS_DIR.mkdir(parents=True, exist_ok=True)
 
     assert NIFTI_DIR.exists()
     assert UPLOAD_DIR.exists()
+    assert MASKS_DIR.exists()
     print(f"Directory existence assertions passed.")
+
+    # Note: TotalSegmentator auto-downloads weights (~12GB) to ~/.totalsegmentator
+    # during the very first run. No manual model loading in the lifespan is needed.
 
     yield
 
     # CLEANUP GOES HERE
-    pass
-
-
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    print("VRAM cleared.")
 
 
 # Define app
@@ -157,3 +165,42 @@ def upload_dicom(file: UploadFile = File(...)):
             "scan_id": scan_id,
             "nifti_path": str(nifti_output_path)
         }
+
+
+# Segmentation endpoint
+@app.post("/api/segment/{scan_id}")
+def run_segmentation(scan_id: str):
+    """
+    Takes a previously uploaded and converted scan_id, runs TotalSegmentator,
+    and outputs the resulting multi-label mask to local storage.
+    """
+
+    # Locate input path for NIfTI Using scan_id
+    input_file = NIFTI_DIR / f"{scan_id}.nii.gz"
+    output_file = MASKS_DIR / f"{scan_id}_mask.nii.gz"
+
+
+    if not input_file.exists():
+        raise HTTPException(status_code=404, detail="NIfTI file not found. Upload first.")
+
+
+    # Run inference
+    print(f"Running TotalSegmentator on {input_file}...")
+    try:
+        totalsegmentator(
+            str(input_file),
+            str(output_file),
+            fast=True,
+            ml=True
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Segmentation failed: {str(e)}")
+
+
+    print(f"Segmentation saved to {output_file}")
+    return {
+        "status": "success",
+        "scan_id": scan_id,
+        "mask_path": str(output_file)
+    }
