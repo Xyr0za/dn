@@ -9,6 +9,8 @@ import dicom2nifti
 import dicom2nifti.settings as settings
 
 # WEB LIBRARIES
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from pathlib import Path
 
@@ -52,7 +54,16 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Local DICOM Engine API", lifespan=lifespan)
 
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # In production, change to ["http://localhost:5173"]
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
+app.mount("/data/nifti", StaticFiles(directory="data/nifti"), name="nifti")
+app.mount("/data/masks", StaticFiles(directory="data/masks"), name="masks")
 
 @app.post("/api/test")
 def test():
