@@ -1,6 +1,6 @@
 # Lucent
 
-Lucen is a full-stack medical imaging platform that combines a high performance 3D rendering engine with an automated AI segmentation backend. 
+Lucent is a full-stack medical imaging platform that combines a high performance 3D rendering engine with an automated AI segmentation backend. 
 
 The frontend was built with Vite, React, and ThreeJS, with a backend powered by FastAPI and TotalSegmentator.
 Lucent allows users to upload a DICOM series; converts it NIfTI volumes, and visualises them with auto-generated anatomical overlays in a 3d environment. 
