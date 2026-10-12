@@ -3,3 +3,5 @@ uvicorn
 python-multipart
 dicom2nifti
 TotalSegmentator
+pylibjpeg
+pylibjpeg-libjpeg
