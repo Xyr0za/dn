@@ -215,3 +215,14 @@ def run_segmentation(scan_id: str):
         "scan_id": scan_id,
         "mask_path": str(output_file)
     }
+
+@app.get("/api/list_nifti")
+def run_list():
+    """
+    Returns a list of NIFTI files.
+    :return:
+    """
+    return {
+        "status": "success",
+        "nifti" : (Path(x).stem.removesuffix('.nii') for x in os.listdir(NIFTI_DIR))
+    }

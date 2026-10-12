@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as nifti from 'nifti-reader-js';
-import type { VolumeData } from './config';
+import type { VolumeData } from '../config/config.ts';
 
 export async function parseVolume(url: string): Promise<VolumeData> {
   const res = await fetch(url);

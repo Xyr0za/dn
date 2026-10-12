@@ -24,10 +24,12 @@ export const fragmentShader = /* glsl */ `
 
   uniform sampler3D u_volume;
   uniform sampler3D u_mask;
+  uniform bool u_hasMask;
   uniform float u_maskOpacity;
   uniform float u_windowMin;
   uniform float u_windowMax;
   uniform vec3 u_flip;
+  uniform float u_hiddenLabel;
 
   out vec4 fragColor;
 
@@ -55,35 +57,47 @@ export const fragmentShader = /* glsl */ `
     vec3 p = vOrigin + bounds.x * rayDir;
     
     vec3 inc = 1.0 / abs(rayDir);
-    float stepSize = min(inc.x, min(inc.y, min(inc.z, 1.0))) / 250.0;
+    // OPTIMIZATION: Reduced step count to 256 for significantly higher frame rate
+    float stepSize = min(inc.x, min(inc.y, min(inc.z, 1.0))) / 256.0; 
     vec3 stepVec = rayDir * stepSize;
 
     p += stepVec * hash(gl_FragCoord.xy);
 
-    float range = max(u_windowMax - u_windowMin, 1.0);
+    // OPTIMIZATION: Pre-calculate division outside the loop
+    float invRange = 1.0 / max(u_windowMax - u_windowMin, 1.0);
     vec4 acc = vec4(0.0);
 
-    for (int i = 0; i < 500; i++) {
+    for (int i = 0; i < 256; i++) {
       vec3 uvw = p + 0.5;
       uvw = mix(uvw, 1.0 - uvw, u_flip);
 
       float density = texture(u_volume, uvw).r;
-      float v = clamp((density - u_windowMin) / range, 0.0, 1.0);
-      float maskVal = texture(u_mask, uvw).r;
-
-      float a = v * v * 0.15;
-      vec3 c = vec3(v);
-
-      if (maskVal > 0.0) {
-        float organId = floor(maskVal * 255.0 + 0.5);
-        c = mix(c, labelColor(organId), u_maskOpacity);
-        a = max(a, u_maskOpacity * 0.05);
+      float v = clamp((density - u_windowMin) * invRange, 0.0, 1.0);
+      
+      // OPTIMIZATION: Empty space skipping. If density is invisible, jump to next step.
+      if (v > 0.01) {
+        float a = v * v * 0.15;
+        vec3 c = vec3(v);
+  
+        // OPTIMIZATION: Only sample the mask if it actually exists
+        if (u_hasMask) {
+          float maskVal = texture(u_mask, uvw).r;
+          if (maskVal > 0.0) {
+            float organId = floor(maskVal * 255.0 + 0.5);
+            
+            // Only apply the label color if it's NOT the hidden label
+            if (organId != u_hiddenLabel) {
+              c = mix(c, labelColor(organId), u_maskOpacity);
+              a = max(a, u_maskOpacity * 0.05);
+            }
+          }
+        }
+  
+        acc.rgb += (1.0 - acc.a) * a * c;
+        acc.a   += (1.0 - acc.a) * a;
       }
 
-      acc.rgb += (1.0 - acc.a) * a * c;
-      acc.a   += (1.0 - acc.a) * a;
-
-      if (acc.a > 0.95) break;
+      if (acc.a > 0.95) break; // Early termination
 
       p += stepVec;
       if (any(greaterThan(p, vec3(0.5))) || any(lessThan(p, vec3(-0.5)))) break;
